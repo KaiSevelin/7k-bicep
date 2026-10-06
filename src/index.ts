@@ -21,7 +21,7 @@
  */
 
 import type { Decl, LinkedModel, PipeIr, ReactIr, ServiceIr } from "@sevenk/core";
-import type { Artifact, Generated, Loss, OptionSpec, Provider, Refusal, Request } from "@sevenk/generate";
+import type { Artifact, Generated, Loss, OptionSpec, Provider, Refusal, Request } from "@sevenk/provider";
 import {
   deadLetterOf,
   forTarget,

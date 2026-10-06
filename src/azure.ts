@@ -23,7 +23,7 @@
  */
 
 import { parseDuration, parseSize, type Delivery, type PipeIr } from "@sevenk/core";
-import type { Loss } from "@sevenk/generate";
+import type { Loss } from "@sevenk/provider";
 
 /** What a namespace is bought as, which decides what can be asked of it. */
 export type Sku = "standard" | "premium";
