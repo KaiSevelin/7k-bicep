@@ -1,0 +1,127 @@
+// A model for `npm run verify`: every pipe shape this provider claims to deploy, and the three it
+// cannot. Deliberately awkward — a `where` with a comparison and one with a `contains`, a service
+// subscribing twice to one pipe, a second named subscription, an explicit dead-letter pipe, a
+// non-durable at-most-once topic, and a stream.
+
+package shop.orders
+
+envelopes Trace
+
+value Ref  : string { length 1..32 }
+value Line : string { length 1..60 }
+
+envelope Trace {
+  correlationId: uuid @role(correlation)
+  tenantId:      Ref  @role(partitionKey)
+  priority:      int  { range 0..9 }
+}
+
+message PlaceOrder v1.0 @command { orderId: Ref @role(businessKey) }
+message Cancel     v1.0 @command { orderId: Ref @role(businessKey) }
+message Accepted   v1.0 @event   { orderId: Ref @role(businessKey) }
+message Refused    v1.0 @event   { orderId: Ref @role(businessKey); reason: Line }
+message Settled    v1.0 @event   { orderId: Ref @role(businessKey) }
+message Noted      v1.0 @event   { orderId: Ref @role(businessKey) }
+message Metered    v1.0 @event   { orderId: Ref @role(businessKey) }
+
+// A queue with ordering and a retention: the ordinary case.
+pipe commands : queue {
+  delivery    at-least-once
+  ordering by tenantId
+  retention   7d
+  carries     PlaceOrder, Cancel
+}
+
+// A topic several services subscribe to, which is where filters earn their keep.
+pipe events : topic {
+  delivery    at-least-once
+  ordering by tenantId
+  retention   7d
+  carries   Accepted, Refused, Settled, Noted
+}
+
+// Duplicate detection, which is the one delivery mode that is a property.
+pipe ledger : queue {
+  delivery  effectively-once within 10m
+  retention 1d
+}
+
+// A dead-letter pipe of its own rather than the built-in one.
+pipe audit : queue {
+  delivery  at-least-once
+  retention 30d
+}
+
+pipe risky : queue {
+  delivery  at-least-once
+  retention 1d
+  dlq       audit
+}
+
+// A queue that discards what it cannot deliver, where the property has an entity to sit on.
+pipe scratch : queue {
+  delivery  at-least-once
+  retention 1d
+  dlq       none
+}
+
+// Not durable and at-most-once, neither of which an entity can fully express. Nothing subscribes to
+// it either, so its `dlq none` has nowhere to go — which the provider declares rather than drops.
+pipe telemetry : topic {
+  delivery at-most-once
+  dlq      none
+}
+
+// An Event Hub, which this provider does not generate.
+pipe firehose : stream {
+  delivery  at-least-once
+  retention 1d
+}
+
+service Desk {
+  emits Accepted to events
+  emits Refused  to events
+  emits Settled  to ledger
+  emits Noted    to audit
+  emits Metered  to telemetry
+
+  // Two clauses, one subscription: a service has one subscription per pipe, receiving both types.
+  reacts PlaceOrder from commands {
+    replies Accepted | Refused
+    retry   5 after 1s max 30s
+  }
+
+  reacts Cancel from commands { replies none }
+
+  reacts Accepted from events {
+    replies none
+    retry   5 after 1s max 30s
+  }
+
+  reacts Settled from events { replies none }
+}
+
+service Reporting {
+  reacts Noted from events {
+    // The clause that earns the provider: a filter the broker enforces.
+    where   envelope.priority < 5
+    replies none
+  }
+
+  // A second, independent subscription to the same pipe.
+  reacts Noted from events as sweep {
+    where       envelope.priority >= 5 and envelope.tenantId != "acme"
+    replies     none
+    concurrency 1
+  }
+}
+
+service Billing {
+  reacts Settled from ledger { replies none }
+
+  // A `contains`, which looks translatable and is not.
+  reacts Refused from events {
+    where   envelope.tenantId contains "a"
+    replies none
+  }
+}

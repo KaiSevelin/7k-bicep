@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+*.log
+
+# Where `npm run verify` writes and compiles the generated templates.
+.verify/
+
+# The Bicep CLI, fetched rather than committed: it is a 120MB self-contained binary and the
+# official release is the one to trust. `npm run verify` says how to get it.
+.tools/
