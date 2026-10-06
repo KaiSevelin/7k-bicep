@@ -492,6 +492,12 @@ export const bicep: Provider = {
   name: "bicep",
   target: "Azure Service Bus (Bicep)",
   layouts: ["per-declaration", "per-package", "single"],
+  /**
+   * The Topology layer, and only it. A `pipe` is the one declaration that is infrastructure: what it
+   * guarantees — delivery, ordering, deduplication, retention, dead lettering — is exactly what a
+   * broker is configured with. A message is a type and a service is code; neither is a resource.
+   */
+  emits: ["pipe"],
   options: OPTIONS,
 
   generate(request: Request): Generated {
